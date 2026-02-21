@@ -1,0 +1,10 @@
+psycopg2-binary
+python-dotenv
+httpx
+ollama
+langchain-ollama
+langchain_community
+langgraph
+docker
+sentence-transformers
+langchain_huggingface
