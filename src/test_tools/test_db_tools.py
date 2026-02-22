@@ -2,7 +2,7 @@ import os
 import logging
 from dotenv import load_dotenv
 import psycopg2
-from db_tools import (
+from ..db_tools import (
     get_active_parents,
     insert_new_parent,
     increment_child_count,

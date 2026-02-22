@@ -2,7 +2,7 @@ import os
 import asyncio
 import json
 from dotenv import load_dotenv
-from servicenow_tools import (
+from ..servicenow_tools import (
     ServiceNowClient, 
     get_single_servicenow_record, 
     query_servicenow_records, 
