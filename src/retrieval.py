@@ -3,7 +3,7 @@ import json
 import logging
 import psycopg2
 from dotenv import load_dotenv
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,7 +19,7 @@ embeddings = HuggingFaceEmbeddings(model_name="intfloat/e5-large-v2")
 def get_db_connection():
     return psycopg2.connect(DB_URL)
 
-def search_knowledge_base(query: str, k: int = 2) -> str:
+def search_knowledge_base(query: str, k: int = 10) -> str:
     """
     Embeds the query and searches Postgres for the closest k chunks.
     Returns a JSON string array of dicts: [{sop_id, starting_line, text}]

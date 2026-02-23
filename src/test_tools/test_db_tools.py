@@ -71,6 +71,7 @@ def run_db_tests():
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("DELETE FROM Active_Problems WHERE parent_id = %s;", (DUMMY_SYS_ID,))
+                #cursor.execute("TRUNCATE TABLE Active_Problems RESTART IDENTITY;")
             conn.commit()
         print("✅ Dummy data wiped. Database is pristine.")
     except Exception as e:
