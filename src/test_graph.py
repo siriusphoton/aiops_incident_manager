@@ -39,5 +39,7 @@ async def run_graph_test(incident_number: str):
     print(f"{'='*60}\n")
 
 if __name__ == "__main__":
-    # Test Scenario 1: Let's run INC0000015 ("I can't launch my VPN client")
-    asyncio.run(run_graph_test("INC0000049"))
+    # Simulating an Alert Storm!
+    tickets = ["INC0000054"] 
+    for ticket in tickets:
+        asyncio.run(run_graph_test(ticket))

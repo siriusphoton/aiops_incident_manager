@@ -7,7 +7,9 @@ from .nodes import (
     node_2b_llm_triage,
     node_3a_pushback,
     node_3b_novel_rag_fixer,
-    node_3c_group_and_link
+    node_3c_group_and_link,
+    node_4a_dynamic_escalation,
+    node_4b_root_cause_triangulation
 )
 
 logger = logging.getLogger('agent-graph')
@@ -43,6 +45,16 @@ def route_after_node_2b(state: AgentState) -> str:
     logger.info("ROUTING: Novel issue detected. Routing to Node 3B (RAG Fixer).")
     return "node_3b_novel_rag_fixer"
 
+def route_after_node_3c(state: AgentState) -> str:
+    """Condition C: Problem Threshold Check"""
+    count = state.get("parent_child_count", 0)
+    if count >= 3:
+        logger.info(f"ROUTING: Volume threshold reached ({count}). Escalating to Phase 4.")
+        return "node_4a_dynamic_escalation"
+    
+    logger.info(f"ROUTING: Linked to parent. Volume below threshold ({count}). Ending graph.")
+    return END
+
 # ============================================================================
 # BUILD THE GRAPH
 # ============================================================================
@@ -60,7 +72,9 @@ def build_incident_graph():
     workflow.add_node("node_3a_pushback", node_3a_pushback)
     workflow.add_node("node_3b_novel_rag_fixer", node_3b_novel_rag_fixer)
     workflow.add_node("node_3c_group_and_link", node_3c_group_and_link)
-    
+    workflow.add_node("node_4a_dynamic_escalation", node_4a_dynamic_escalation)
+    workflow.add_node("node_4b_root_cause_triangulation", node_4b_root_cause_triangulation)
+
     # 3. Define the Entry Point
     workflow.set_entry_point("node_1")
     
@@ -88,7 +102,17 @@ def build_incident_graph():
     workflow.add_edge("node_2a_escalation", END)
     workflow.add_edge("node_3a_pushback", END)
     workflow.add_edge("node_3b_novel_rag_fixer", END)
-    workflow.add_edge("node_3c_group_and_link", END) # We will change this to condition C in Phase 4
+    workflow.add_conditional_edges(
+        "node_3c_group_and_link",
+        route_after_node_3c,
+        {
+            "node_4a_dynamic_escalation": "node_4a_dynamic_escalation",
+            END: END
+        }
+    )
     
+    # Wire 4A directly to 4B, and 4B to END
+    workflow.add_edge("node_4a_dynamic_escalation", "node_4b_root_cause_triangulation")
+    workflow.add_edge("node_4b_root_cause_triangulation", END)
     # Compile the graph
     return workflow.compile()

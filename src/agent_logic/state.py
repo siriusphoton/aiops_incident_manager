@@ -12,6 +12,8 @@ class AgentState(TypedDict):
     # --- LLM Outputs (Node 2B & 4B) ---
     llm_classification: Optional[Dict[str, Any]] # {MATCH, CATEGORY, MISSING_ASSET, IS_BLOCKER}
     root_cause_hypothesis: Optional[str]         # Generated during Triangulation
+
+    parent_child_count: int
     
     # --- Execution Tracking ---
     action_taken: str                   # A human-readable log of what the graph actually did

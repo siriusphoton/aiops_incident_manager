@@ -4,7 +4,7 @@ import logging
 from dotenv import load_dotenv
 
 # Import our custom tools
-from servicenow_tools import ServiceNowClient, get_single_servicenow_record
+from servicenow_tools import ServiceNowClient, get_single_servicenow_record, create_servicenow_record, query_servicenow_records
 from db_tools import get_active_parents, close_active_parent
 
 from .state import AgentState
@@ -146,7 +146,7 @@ async def node_2b_llm_triage(state: AgentState) -> AgentState:
         ("system", "You are an expert ITIL Service Desk triage agent. Analyze the incoming incident JSON and compare it to the list of Active Parent Incidents.\n\n{format_instructions}\n\nYou must output ONLY valid JSON matching this exact schema."),
         ("human", "Incoming Incident:\n{incident}\n\nActive Parents:\n{active_parents}")
     ])
-    
+    print(prompt)
     # 4. Chain the prompt -> llm -> parser
     chain = prompt | llm | parser
     
@@ -307,7 +307,92 @@ async def node_3c_group_and_link(state: AgentState) -> AgentState:
     await update_servicenow_record(sn_client, "incident", inc_sys_id, payload)
     
     # 2. Update Postgres database child count (crucial for Phase 4)
-    increment_child_count(parent_sys_id)
+    # 2. Update Postgres database child count and save to state
+    new_count = increment_child_count(parent_sys_id)
+    state["parent_child_count"] = new_count
     
     state["action_taken"] = f"Linked to Parent Incident {parent_sys_id}."
+    return state
+
+# ============================================================================
+# PHASE 4: ADVANCED ITIL ANALYSIS (POST-GROUPING)
+# ============================================================================
+
+async def node_4a_dynamic_escalation(state: AgentState) -> AgentState:
+    """
+    NODE 4A: The "Impact" Upgrader.
+    Upgrades the Parent Ticket to 'Enterprise Impact' because volume is high.
+    """
+    logger.info(f"--- ENTERING NODE 4A: Dynamic Escalation for Parent {state['llm_classification']['MATCH']} ---")
+    parent_sys_id = state["llm_classification"]["MATCH"]
+    
+    payload = {
+        "impact": "1", # ITIL Code 1 = High/Enterprise Impact
+        "work_notes": f"Volume threshold breached ({state.get('parent_child_count')} related incidents). Automated escalation: Upgraded Impact to 1 (Enterprise-wide)."
+    }
+    await update_servicenow_record(sn_client, "incident", parent_sys_id, payload)
+    
+    state["action_taken"] = "Escalated Parent Impact to Enterprise."
+    return state
+
+async def node_4b_root_cause_triangulation(state: AgentState) -> AgentState:
+    """
+    NODE 4B: The Core Service Detector.
+    Analyzes all grouped tickets, deduces the root infrastructure failure, 
+    creates a Problem Record, and links it.
+    """
+    logger.info("--- ENTERING NODE 4B: Root Cause Triangulation ---")
+    parent_sys_id = state["llm_classification"]["MATCH"]
+    
+    # 1. Fetch all children of this parent from ServiceNow to get their descriptions
+    query_str = f"parent_incident={parent_sys_id}"
+    children_resp = await query_servicenow_records(sn_client, "incident", query=query_str, limit=10)
+    children_data = children_resp.get("data", []) if isinstance(children_resp, dict) else json.loads(children_resp).get("data", [])
+    
+    ticket_texts = [f"- {state['incident_json'].get('short_description', {}).get('display_value', '')}"] # Start with the trigger ticket
+    for child in children_data:
+        summary = child.get("short_description", {}).get("display_value", "")
+        if summary:
+            ticket_texts.append(f"- {summary}")
+            
+    ticket_list_str = "\n".join(ticket_texts)
+    logger.info(f"Triangulating across {len(ticket_texts)} grouped tickets.")
+    
+    # 2. Ask the LLM to hypothesize the Root Cause
+    triangulation_llm = ChatOllama(
+        model="gpt-oss:20b-cloud",
+        temperature=0.1,
+        base_url=os.getenv("OLLAMA_BASE_URL"),
+        headers={"Authorization": f"Bearer {os.getenv('OLLAMA_API_KEY')}"},
+    )
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an expert AIOps Root Cause Analyzer. Analyze these related IT incidents which have been grouped together by semantic similarity. What is the likely shared underlying infrastructure or database failure? Output STRICTLY a 2 to 3 sentence diagnostic hypothesis. Do not include pleasantries."),
+        ("human", "Grouped Incidents:\n{tickets}")
+    ])
+    chain = prompt | triangulation_llm
+    
+    hypothesis = chain.invoke({"tickets": ticket_list_str}).content
+    
+    # 3. Create the Problem Record in ServiceNow
+    prob_payload = {
+        "short_description": "Automated Triangulation: Systemic Failure Detected",
+        "description": f"Automated Triangulation Hypothesis:\n{hypothesis}\n\nBased on a volume spike of {state.get('parent_child_count')} linked incidents."
+    }
+    prob_resp = await create_servicenow_record(sn_client, "problem", prob_payload)
+    
+    # Safely parse the response
+    prob_data = prob_resp if isinstance(prob_resp, dict) else json.loads(prob_resp)
+    
+    # --- CRITICAL FIX ---
+    # POST responses return flat strings for fields, not nested dicts.
+    prob_sys_id = prob_data.get("data", {}).get("sys_id", "")
+    prob_number = prob_data.get("data", {}).get("number", "")
+    
+    # 4. Link the Parent Incident to the new Problem Record
+    if prob_sys_id:
+        await update_servicenow_record(sn_client, "incident", parent_sys_id, {"problem_id": prob_sys_id})
+        logger.info(f"Successfully linked Parent Incident to new Problem {prob_number}")
+    
+    state["root_cause_hypothesis"] = hypothesis
+    state["action_taken"] = f"Generated Problem Record {prob_number} and linked to Parent."
     return state
