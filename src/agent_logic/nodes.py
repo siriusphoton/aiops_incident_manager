@@ -24,6 +24,13 @@ from servicenow_tools import update_servicenow_record
 
 from langchain_core.output_parsers import PydanticOutputParser
 
+
+from .prompts import (
+    NODE_2B_SYSTEM_PROMPT, NODE_2B_HUMAN_PROMPT,
+    NODE_3B_SYSTEM_PROMPT, NODE_3B_HUMAN_PROMPT,
+    NODE_4B_SYSTEM_PROMPT, NODE_4B_HUMAN_PROMPT
+)
+
 logger = logging.getLogger('agent-nodes')
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
@@ -143,10 +150,10 @@ async def node_2b_llm_triage(state: AgentState) -> AgentState:
     
     # 3. Explicitly inject the format instructions into the prompt
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert ITIL Service Desk triage agent. Analyze the incoming incident JSON and compare it to the list of Active Parent Incidents.\n\n{format_instructions}\n\nYou must output ONLY valid JSON matching this exact schema."),
-        ("human", "Incoming Incident:\n{incident}\n\nActive Parents:\n{active_parents}")
+        ("system", NODE_2B_SYSTEM_PROMPT),
+        ("human", NODE_2B_HUMAN_PROMPT)
     ])
-    print(prompt)
+
     # 4. Chain the prompt -> llm -> parser
     chain = prompt | llm | parser
     
@@ -241,17 +248,8 @@ async def node_3b_novel_rag_fixer(state: AgentState) -> AgentState:
         )
         
         synth_prompt = ChatPromptTemplate.from_messages([
-            ("system", 
-             "You are an expert ITIL Service Desk agent. Your role is to diagnose IT incidents and provide clear, actionable steps to the user.\n"
-             "You will be provided with the user's incident description and an official Standard Operating Procedure (SOP) document retrieved from the IT Knowledge Base.\n\n"
-             "CONTEXT RULES:\n"
-             "1. The provided SOP contains the exact, approved enterprise steps to resolve this specific class of issue.\n"
-             "2. Do NOT invent, guess, or hallucinate any technical commands or steps that are not present in the SOP.\n\n"
-             "YOUR TASK:\n"
-             "Write a professional, empathetic, and concise response to the user. Acknowledge their specific issue (from their summary), "
-             "and then seamlessly provide them with the exact troubleshooting steps extracted from the SOP. Use clean formatting."
-            ),
-            ("human", "User's Incident Summary: {summary}\nUser's Incident Description: {description}\n\nRetrieved Official SOP ({sop_id}):\n{sop_text}")
+            ("system", NODE_3B_SYSTEM_PROMPT),
+            ("human", NODE_3B_HUMAN_PROMPT)
         ])
         
         chain = synth_prompt | synth_llm
@@ -366,8 +364,8 @@ async def node_4b_root_cause_triangulation(state: AgentState) -> AgentState:
         headers={"Authorization": f"Bearer {os.getenv('OLLAMA_API_KEY')}"},
     )
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert AIOps Root Cause Analyzer. Analyze these related IT incidents which have been grouped together by semantic similarity. What is the likely shared underlying infrastructure or database failure? Output STRICTLY a 2 to 3 sentence diagnostic hypothesis. Do not include pleasantries."),
-        ("human", "Grouped Incidents:\n{tickets}")
+        ("system", NODE_4B_SYSTEM_PROMPT),
+        ("human", NODE_4B_HUMAN_PROMPT)
     ])
     chain = prompt | triangulation_llm
     

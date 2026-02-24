@@ -40,6 +40,6 @@ async def run_graph_test(incident_number: str):
 
 if __name__ == "__main__":
     # Simulating an Alert Storm!
-    tickets = ["INC0000054"] 
+    tickets = ["INC0000055"] 
     for ticket in tickets:
         asyncio.run(run_graph_test(ticket))
